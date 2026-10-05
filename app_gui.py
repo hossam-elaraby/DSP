@@ -15,6 +15,8 @@ import matplotlib
 matplotlib.use('QtAgg')
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+from matplotlib.ticker import MaxNLocator
+from reader import find_file_ci
 
 from signal_model import Signal, read_signal_from_file, write_signal_to_file
 from algorithm import get_registered_algorithms, DSPAlgorithm, AlgorithmParam
@@ -41,12 +43,12 @@ QWidget {
     color: #1e293b;
     font-size: 13px;
 }
-.CardWidget {
+QFrame[class="CardWidget"] {
     background-color: #ffffff;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
 }
-.CardHeader {
+QLabel[class="CardHeader"] {
     font-size: 14px;
     font-weight: 700;
     color: #0f172a;
@@ -295,6 +297,7 @@ class SignalCanvas(FigureCanvas):
         self.ax.set_xlabel("Sample Index", fontsize=10, fontweight='bold', color='#334155')
         self.ax.set_ylabel("Amplitude", fontsize=10, fontweight='bold', color='#334155')
         self.ax.tick_params(colors='#475569', labelsize=9)
+        self.ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 
         for spine in self.ax.spines.values():
             spine.set_color('#cbd5e1')
@@ -331,22 +334,33 @@ class DSPMainWindow(QMainWindow):
         self._init_ui()
         self._load_initial_signals()
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self._enforce_plot_ratio()
+    # def resizeEvent(self, event):
+    #     super().resizeEvent(event)
+    #     self._enforce_plot_ratio()
 
+    # def showEvent(self, event):
+    #     super().showEvent(event)
+    #     self._enforce_plot_ratio()
+
+    # def _enforce_plot_ratio(self):
+    #     if hasattr(self, 'main_splitter'):
+    #         total_h = self.main_splitter.height()
+    #         if total_h > 150:
+    #             h_plot = int(total_h * 0.60)
+    #             h_bottom = total_h - h_plot
+    #             self.main_splitter.setSizes([h_plot, h_bottom])
     def showEvent(self, event):
         super().showEvent(event)
-        self._enforce_plot_ratio()
+        if not getattr(self, "_ratio_applied", False):
+            self._ratio_applied = True
+            self._enforce_plot_ratio()
 
     def _enforce_plot_ratio(self):
         if hasattr(self, 'main_splitter'):
             total_h = self.main_splitter.height()
             if total_h > 150:
                 h_plot = int(total_h * 0.60)
-                h_bottom = total_h - h_plot
-                self.main_splitter.setSizes([h_plot, h_bottom])
-
+                self.main_splitter.setSizes([h_plot, total_h - h_plot])
     def _init_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
@@ -746,23 +760,26 @@ class DSPMainWindow(QMainWindow):
                 row_l.addStretch()
 
                 if param.param_type == "float":
+                    lo = param.min_value if param.min_value is not None else -10000.0
+                    hi = param.max_value if param.max_value is not None else 10000.0
                     spin = QDoubleSpinBox()
-                    spin.setRange(param.min_value or -10000.0, param.max_value or 10000.0)
+                    spin.setRange(lo, hi)
                     spin.setValue(float(param.default_value))
-                    spin.setSingleStep(param.step or 0.5)
+                    spin.setSingleStep(param.step if param.step is not None else 0.5)
                     spin.setFixedWidth(100)
                     row_l.addWidget(spin)
                     self.param_inputs[param.name] = spin
 
                 elif param.param_type == "int":
+                    lo = int(param.min_value) if param.min_value is not None else -1000
+                    hi = int(param.max_value) if param.max_value is not None else 1000
                     spin_int = QSpinBox()
-                    spin_int.setRange(int(param.min_value or -1000), int(param.max_value or 1000))
+                    spin_int.setRange(lo, hi)
                     spin_int.setValue(int(param.default_value))
-                    spin_int.setSingleStep(int(param.step or 1))
+                    spin_int.setSingleStep(int(param.step) if param.step is not None else 1)
                     spin_int.setFixedWidth(100)
                     row_l.addWidget(spin_int)
                     self.param_inputs[param.name] = spin_int
-
                 elif param.param_type == "choice":
                     combo = QComboBox()
                     combo.addItems(param.options)
@@ -999,7 +1016,7 @@ class DSPMainWindow(QMainWindow):
                 self.result_signal = algo.run_func(visible, **params)
                 self.current_operation_name = f"{algo.name} on {len(visible)} signals"
                 self.lbl_status_badge.setText(f"{algo.name} executed successfully.")
-
+                
             elif algo.category == "two_signals":
                 sig_a = self.combo_sig_a.currentData()
                 sig_b = self.combo_sig_b.currentData()
@@ -1029,7 +1046,13 @@ class DSPMainWindow(QMainWindow):
             letters = ['X', 'Y', 'Z', 'W', 'A', 'B', 'C', 'D']
             next_idx = len(self.signals)
             default_alias = letters[next_idx] if next_idx < len(letters) else f"S{next_idx + 1}"
-            sig_name = os.path.splitext(os.path.basename(file_path))[0]
+            # sig_name = os.path.splitext(os.path.basename(file_path))[0]
+            base_name = os.path.splitext(os.path.basename(file_path))[0]
+            existing = {s.name for s in self.signals}
+            sig_name, counter = base_name, 2
+            while sig_name in existing:
+                sig_name = f"{base_name} ({counter})"
+                counter += 1
 
             sig = read_signal_from_file(file_path, default_name=sig_name, default_alias=default_alias)
             self.signals.append(sig)
@@ -1075,23 +1098,45 @@ class DSPMainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Save Error", f"Could not save file:\n{str(e)}")
 
+    # def _on_clear_result_clicked(self):
+    #     self.result_signal = None
+    #     self.current_operation_name = "None"
+    #     self.procedural_steps = []
+    #     if self.active_signal_name == "Result":
+    #         self.active_signal_name = self.signals[0].name if self.signals else None
+
+    #     self._rebuild_signals_ui()
+    #     self._update_views()
+    #     self.lbl_status_badge.setText("Result cleared.")
     def _on_clear_result_clicked(self):
+        if self.result_signal is not None and self.active_signal_name == self.result_signal.name:
+            self.active_signal_name = self.signals[0].name if self.signals else None
         self.result_signal = None
         self.current_operation_name = "None"
         self.procedural_steps = []
-        if self.active_signal_name == "Result":
-            self.active_signal_name = self.signals[0].name if self.signals else None
-
         self._rebuild_signals_ui()
         self._update_views()
         self.lbl_status_badge.setText("Result cleared.")
 
+    # def _load_initial_signals(self):
+    #     base_dir = os.path.dirname(os.path.abspath(__file__))
+    #     task_dir = os.path.join(base_dir, "tasks", "Lab 1", "Task 1 testcases and testing functions")
+    #     s1 = os.path.join(task_dir, "Signal1.txt")
+    #     s2 = os.path.join(task_dir, "Signal2.txt")
+    #     if os.path.exists(s1) and os.path.exists(s2):
+    #         self.signals = [
+    #             read_signal_from_file(s1, default_name="Signal 1", default_alias="X"),
+    #             read_signal_from_file(s2, default_name="Signal 2", default_alias="Y")
+    #         ]
+    #     self.result_signal = None
+    #     self._rebuild_signals_ui()
+    #     self._update_views()
     def _load_initial_signals(self):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         task_dir = os.path.join(base_dir, "tasks", "Lab 1", "Task 1 testcases and testing functions")
-        s1 = os.path.join(task_dir, "Signal1.txt")
-        s2 = os.path.join(task_dir, "Signal2.txt")
-        if os.path.exists(s1) and os.path.exists(s2):
+        s1 = find_file_ci(task_dir, "Signal1.txt")
+        s2 = find_file_ci(task_dir, "Signal2.txt")
+        if s1 and s2:
             self.signals = [
                 read_signal_from_file(s1, default_name="Signal 1", default_alias="X"),
                 read_signal_from_file(s2, default_name="Signal 2", default_alias="Y")
