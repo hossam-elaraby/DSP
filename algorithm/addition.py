@@ -24,5 +24,5 @@ ALGORITHM = DSPAlgorithm(
     category="multi_signals",
     run_func=add_signals,
     params=[],
-    description="Adds all checked signals with zero-padding over the union index range."
+    description="Adds selected signals with zero-padding over the union index range."
 )

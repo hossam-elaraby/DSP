@@ -8,7 +8,8 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QGridLayout, QLabel, QPushButton, QComboBox, QSpinBox, QDoubleSpinBox,
     QCheckBox, QTableWidget, QTableWidgetItem, QHeaderView, QFileDialog,
-    QMessageBox, QFrame, QTextEdit, QSplitter, QScrollArea, QTabWidget
+    QMessageBox, QFrame, QTextEdit, QSplitter, QScrollArea, QTabWidget,
+    QListWidget, QListWidgetItem
 )
 
 import matplotlib
@@ -99,6 +100,21 @@ QHeaderView::section {
     border-bottom: 1px solid #e2e8f0;
     padding: 5px;
     font-size: 12px;
+}
+QListWidget {
+    background-color: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    padding: 2px;
+    font-size: 11px;
+}
+QListWidget::item {
+    padding: 3px 5px;
+    border-radius: 3px;
+}
+QListWidget::item:selected {
+    background-color: #eff6ff;
+    color: #1d4ed8;
 }
 QComboBox, QSpinBox, QDoubleSpinBox, QLineEdit {
     background-color: #ffffff;
@@ -559,6 +575,47 @@ class DSPMainWindow(QMainWindow):
         two_layout.addWidget(self.combo_sig_b, 1, 1)
         self.param_box_layout.addWidget(self.widget_two_signals)
 
+        self.widget_addition_signals = QWidget()
+        add_layout = QVBoxLayout(self.widget_addition_signals)
+        add_layout.setContentsMargins(0, 0, 0, 0)
+        add_layout.setSpacing(4)
+
+        lbl_add_title = QLabel("Signals to Add:")
+        lbl_add_title.setStyleSheet("font-weight: 600; font-size: 11px; color: #334155;")
+        add_layout.addWidget(lbl_add_title)
+
+        add_input_row = QHBoxLayout()
+        self.combo_add_signal = QComboBox()
+        self.btn_add_to_sum = QPushButton("+ Add")
+        self.btn_add_to_sum.clicked.connect(self._on_add_signal_to_addition_list)
+        self.btn_add_all_to_sum = QPushButton("Add All")
+        self.btn_add_all_to_sum.clicked.connect(self._add_all_to_addition_list)
+        add_input_row.addWidget(self.combo_add_signal, stretch=1)
+        add_input_row.addWidget(self.btn_add_to_sum)
+        add_input_row.addWidget(self.btn_add_all_to_sum)
+        add_layout.addLayout(add_input_row)
+
+        self.list_addition_signals = QListWidget()
+        self.list_addition_signals.setMinimumHeight(65)
+        self.list_addition_signals.setMaximumHeight(85)
+        self.list_addition_signals.itemDoubleClicked.connect(lambda _: self._remove_selected_addition_signal())
+        add_layout.addWidget(self.list_addition_signals)
+
+        add_actions_row = QHBoxLayout()
+        self.btn_remove_addition_signal = QPushButton("Remove")
+        self.btn_remove_addition_signal.clicked.connect(self._remove_selected_addition_signal)
+        self.btn_clear_addition_signals = QPushButton("Clear")
+        self.btn_clear_addition_signals.clicked.connect(self._clear_addition_signals)
+        self.lbl_addition_count = QLabel("0 signals in sum")
+        self.lbl_addition_count.setStyleSheet("color: #64748b; font-size: 11px;")
+        add_actions_row.addWidget(self.btn_remove_addition_signal)
+        add_actions_row.addWidget(self.btn_clear_addition_signals)
+        add_actions_row.addStretch()
+        add_actions_row.addWidget(self.lbl_addition_count)
+        add_layout.addLayout(add_actions_row)
+
+        self.param_box_layout.addWidget(self.widget_addition_signals)
+
         self.dynamic_params_container = QWidget()
         self.dynamic_params_layout = QVBoxLayout(self.dynamic_params_container)
         self.dynamic_params_layout.setContentsMargins(0, 0, 0, 0)
@@ -730,6 +787,36 @@ class DSPMainWindow(QMainWindow):
             self._update_views()
             self.tabs.setCurrentIndex(0)
 
+    def _on_add_signal_to_addition_list(self):
+        sig = self.combo_add_signal.currentData()
+        if not sig:
+            return
+        item = QListWidgetItem(f"{sig.name} ({sig.alias}) - {sig.n_samples} samples")
+        item.setData(Qt.ItemDataRole.UserRole, sig)
+        self.list_addition_signals.addItem(item)
+        self._update_addition_count_label()
+
+    def _add_all_to_addition_list(self):
+        for sig in self.signals:
+            item = QListWidgetItem(f"{sig.name} ({sig.alias}) - {sig.n_samples} samples")
+            item.setData(Qt.ItemDataRole.UserRole, sig)
+            self.list_addition_signals.addItem(item)
+        self._update_addition_count_label()
+
+    def _remove_selected_addition_signal(self):
+        row = self.list_addition_signals.currentRow()
+        if row >= 0:
+            self.list_addition_signals.takeItem(row)
+            self._update_addition_count_label()
+
+    def _clear_addition_signals(self):
+        self.list_addition_signals.clear()
+        self._update_addition_count_label()
+
+    def _update_addition_count_label(self):
+        count = self.list_addition_signals.count()
+        self.lbl_addition_count.setText(f"{count} signal{'s' if count != 1 else ''} in sum")
+
     def _on_operation_changed(self, index: int):
         data = self.combo_op.currentData()
         if not data:
@@ -743,9 +830,14 @@ class DSPMainWindow(QMainWindow):
 
         algo: DSPAlgorithm = data
 
-        if algo.category == "two_signals":
+        if algo.category == "multi_signals":
+            self.widget_addition_signals.setVisible(True)
+            self.widget_two_signals.setVisible(False)
+        elif algo.category == "two_signals":
+            self.widget_addition_signals.setVisible(False)
             self.widget_two_signals.setVisible(True)
         else:
+            self.widget_addition_signals.setVisible(False)
             self.widget_two_signals.setVisible(False)
 
         if algo.params:
@@ -848,11 +940,24 @@ class DSPMainWindow(QMainWindow):
 
         self.combo_sig_a.clear()
         self.combo_sig_b.clear()
+        self.combo_add_signal.clear()
         for sig in self.signals:
             self.combo_sig_a.addItem(f"{sig.name} ({sig.alias})", sig)
             self.combo_sig_b.addItem(f"{sig.name} ({sig.alias})", sig)
+            self.combo_add_signal.addItem(f"{sig.name} ({sig.alias})", sig)
         if len(self.signals) >= 2:
             self.combo_sig_b.setCurrentIndex(1)
+
+        for i in range(self.list_addition_signals.count() - 1, -1, -1):
+            item = self.list_addition_signals.item(i)
+            sig = item.data(Qt.ItemDataRole.UserRole)
+            if sig not in self.signals:
+                self.list_addition_signals.takeItem(i)
+
+        if self.list_addition_signals.count() == 0 and len(self.signals) >= 2:
+            self._add_all_to_addition_list()
+        else:
+            self._update_addition_count_label()
 
         if not self.active_signal_name or not self._get_signal_by_name(self.active_signal_name):
             if self.signals:
@@ -1009,12 +1114,18 @@ class DSPMainWindow(QMainWindow):
                 self.lbl_status_badge.setText(f"{algo.name} executed successfully.")
 
             elif algo.category == "multi_signals":
-                visible = self._get_visible_signals()
-                if not visible:
-                    QMessageBox.warning(self, "No Signals Selected", "Please check at least one signal.")
+                addition_signals = []
+                for i in range(self.list_addition_signals.count()):
+                    item = self.list_addition_signals.item(i)
+                    sig = item.data(Qt.ItemDataRole.UserRole)
+                    if sig:
+                        addition_signals.append(sig)
+
+                if not addition_signals:
+                    QMessageBox.warning(self, "No Signals in List", "Please add at least one signal to the addition list.")
                     return
-                self.result_signal = algo.run_func(visible, **params)
-                self.current_operation_name = f"{algo.name} on {len(visible)} signals"
+                self.result_signal = algo.run_func(addition_signals, **params)
+                self.current_operation_name = f"{algo.name} on {len(addition_signals)} signals"
                 self.lbl_status_badge.setText(f"{algo.name} executed successfully.")
                 
             elif algo.category == "two_signals":
