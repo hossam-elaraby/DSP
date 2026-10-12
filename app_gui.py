@@ -362,11 +362,17 @@ class SignalCanvas(FigureCanvas):
         self.draw()
 
 
+
 class GenerateSignalDialog(QDialog):
     def __init__(self, kind, parent=None):
         super().__init__(parent)
+
         self.kind = kind
-        self.setWindowTitle("Generate Sine Wave" if kind == "sin" else "Generate Cosine Wave")
+        self.setWindowTitle(
+            "Generate Sine Wave" if kind == "sin"
+            else "Generate Cosine Wave"
+        )
+
         self.setStyleSheet("""
             QDialog {
                 background-color: #1e293b;
@@ -375,7 +381,7 @@ class GenerateSignalDialog(QDialog):
             QLabel {
                 color: white;
             }
-            QDoubleSpinBox {
+            QDoubleSpinBox, QComboBox {
                 background-color: #334155;
                 color: white;
                 border: 1px solid #64748b;
@@ -406,35 +412,108 @@ class GenerateSignalDialog(QDialog):
         self.theta = spin(-100, 100, 0.0, 0.1)
         self.freq = spin(0.001, 100000, 5.0, 1.0)
         self.fs = spin(0.001, 1000000, 100.0, 10.0)
+
+        # Choose how the signal length is specified.
+        self.duration_mode = QComboBox()
+        self.duration_mode.addItems([
+            "Duration (seconds)",
+            "Number of periods"
+        ])
+
         self.dur = spin(0.001, 1000, 1.0, 0.5)
+        self.periods = spin(0.001, 100000, 4.0, 1.0)
+
+        self.calculated_duration = QLabel()
 
         form = QFormLayout(self)
         form.addRow("Amplitude (A):", self.amp)
         form.addRow("Phase shift θ (radians):", self.theta)
         form.addRow("Analog frequency (Hz):", self.freq)
         form.addRow("Sampling frequency (Hz):", self.fs)
+        form.addRow("Signal length input:", self.duration_mode)
         form.addRow("Duration (s):", self.dur)
+        form.addRow("Number of periods:", self.periods)
+        form.addRow("Calculated duration:", self.calculated_duration)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
-                                   QDialogButtonBox.StandardButton.Cancel)
+        self.duration_mode.currentIndexChanged.connect(
+            self._update_length_mode
+        )
+        self.freq.valueChanged.connect(self._update_calculated_duration)
+        self.dur.valueChanged.connect(self._update_calculated_duration)
+        self.periods.valueChanged.connect(self._update_calculated_duration)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok |
+            QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self._try_accept)
         buttons.rejected.connect(self.reject)
         form.addRow(buttons)
 
+        self._update_length_mode()
+
+    def _update_length_mode(self, *_):
+        use_duration = self.duration_mode.currentIndex() == 0
+
+        self.dur.setEnabled(use_duration)
+        self.periods.setEnabled(not use_duration)
+
+        self._update_calculated_duration()
+
+    def _update_calculated_duration(self, *_):
+        if self.duration_mode.currentIndex() == 0:
+            duration = self.dur.value()
+            periods = duration * self.freq.value()
+            self.calculated_duration.setText(
+                f"{duration:.6g} s ({periods:.4g} periods)"
+            )
+        else:
+            duration = self.periods.value() / self.freq.value()
+            self.calculated_duration.setText(
+                f"{duration:.6g} s"
+            )
+
     def _try_accept(self):
         if self.fs.value() < 2 * self.freq.value():
             QMessageBox.warning(
-                self, "Sampling Theorem Violated",
-                f"fs must be at least 2 x f.\nMinimum fs for f = {self.freq.value()} Hz is "
+                self,
+                "Sampling Theorem Violated",
+                f"fs must be at least 2 x f.\n"
+                f"Minimum fs for f = {self.freq.value()} Hz is "
                 f"{2 * self.freq.value()} Hz."
             )
             return
+
+        duration = self._get_duration()
+        n_samples = round(self.fs.value() * duration)
+
+        if n_samples < 1 or n_samples > 200_000:
+            QMessageBox.warning(
+                self,
+                "Invalid Signal Length",
+                "The generated signal must contain between "
+                "1 and 200,000 samples. Adjust the duration, "
+                "number of periods, or sampling frequency."
+            )
+            return
+
         self.accept()
 
-    def values(self):
-        return (self.kind, self.amp.value(), self.theta.value(),
-                self.freq.value(), self.fs.value(), self.dur.value())
+    def _get_duration(self):
+        if self.duration_mode.currentIndex() == 0:
+            return self.dur.value()
 
+        return self.periods.value() / self.freq.value()
+
+    def values(self):
+        return (
+            self.kind,
+            self.amp.value(),
+            self.theta.value(),
+            self.freq.value(),
+            self.fs.value(),
+            self._get_duration()
+        )
 
 class DSPMainWindow(QMainWindow):
     def __init__(self):
