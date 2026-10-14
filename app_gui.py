@@ -1,5 +1,6 @@
 import os
 import sys
+import math
 from typing import Dict, List, Optional, Any
 
 from PyQt6.QtCore import Qt
@@ -10,7 +11,7 @@ from PyQt6.QtWidgets import (
     QCheckBox, QTableWidget, QTableWidgetItem, QHeaderView, QFileDialog,
     QMessageBox, QFrame, QTextEdit, QSplitter, QScrollArea, QTabWidget,
     QListWidget, QListWidgetItem, QDialog, QFormLayout, QDialogButtonBox,
-    QMenu
+    QMenu, QRadioButton
 )
 
 import matplotlib
@@ -25,7 +26,8 @@ from algorithm import (
     get_registered_algorithms, DSPAlgorithm, AlgorithmParam,
     generate_signal, continuous_curve
 )
-from test_runner import run_lab1_tests
+from test_runner import run_all_lab_tests, run_lab1_tests, run_lab3_tests
+
 
 
 COLOR_SIG1 = "#2563eb"
@@ -835,6 +837,50 @@ class DSPMainWindow(QMainWindow):
 
         self.param_box_layout.addWidget(self.widget_addition_signals)
 
+        self.widget_quantization = QWidget()
+        quant_layout = QVBoxLayout(self.widget_quantization)
+        quant_layout.setContentsMargins(0, 0, 0, 0)
+        quant_layout.setSpacing(6)
+
+        mode_row = QHBoxLayout()
+        self.radio_quant_bits = QRadioButton("Number of Bits")
+        self.radio_quant_levels = QRadioButton("Number of Levels")
+        self.radio_quant_bits.setChecked(True)
+        mode_row.addWidget(self.radio_quant_bits)
+        mode_row.addWidget(self.radio_quant_levels)
+        quant_layout.addLayout(mode_row)
+
+        inputs_grid = QGridLayout()
+        inputs_grid.setContentsMargins(0, 0, 0, 0)
+        inputs_grid.setSpacing(6)
+
+        inputs_grid.addWidget(QLabel("Bits (B):"), 0, 0)
+        self.spin_quant_bits = QSpinBox()
+        self.spin_quant_bits.setRange(1, 16)
+        self.spin_quant_bits.setValue(3)
+        self.spin_quant_bits.setFixedWidth(90)
+        inputs_grid.addWidget(self.spin_quant_bits, 0, 1)
+
+        inputs_grid.addWidget(QLabel("Levels (L):"), 1, 0)
+        self.spin_quant_levels = QSpinBox()
+        self.spin_quant_levels.setRange(2, 65536)
+        self.spin_quant_levels.setValue(8)
+        self.spin_quant_levels.setFixedWidth(90)
+        self.spin_quant_levels.setEnabled(False)
+        inputs_grid.addWidget(self.spin_quant_levels, 1, 1)
+
+        quant_layout.addLayout(inputs_grid)
+
+        self.lbl_quant_derived = QLabel("Derived: 8 levels")
+        self.lbl_quant_derived.setStyleSheet("color: #2563eb; font-weight: 600; font-size: 11px;")
+        quant_layout.addWidget(self.lbl_quant_derived)
+
+        self.radio_quant_bits.toggled.connect(self._on_quant_mode_changed)
+        self.spin_quant_bits.valueChanged.connect(self._on_quant_bits_changed)
+        self.spin_quant_levels.valueChanged.connect(self._on_quant_levels_changed)
+
+        self.param_box_layout.addWidget(self.widget_quantization)
+
         self.dynamic_params_container = QWidget()
         self.dynamic_params_layout = QVBoxLayout(self.dynamic_params_container)
         self.dynamic_params_layout.setContentsMargins(0, 0, 0, 0)
@@ -853,12 +899,17 @@ class DSPMainWindow(QMainWindow):
         self.btn_save_result.clicked.connect(self._on_save_result_clicked)
         self.btn_save_result.setEnabled(False)
 
+        self.btn_add_error_sig = QPushButton("+ Add Error Signal")
+        self.btn_add_error_sig.clicked.connect(self._on_add_error_sig_clicked)
+        self.btn_add_error_sig.setEnabled(False)
+
         self.btn_clear_result = QPushButton("Clear Result")
         self.btn_clear_result.setObjectName("DangerButton")
         self.btn_clear_result.clicked.connect(self._on_clear_result_clicked)
         self.btn_clear_result.setEnabled(False)
 
         res_btn_layout.addWidget(self.btn_save_result)
+        res_btn_layout.addWidget(self.btn_add_error_sig)
         res_btn_layout.addWidget(self.btn_clear_result)
         layout.addLayout(res_btn_layout)
 
@@ -884,11 +935,18 @@ class DSPMainWindow(QMainWindow):
         left_layout.setContentsMargins(14, 12, 14, 12)
         left_layout.setSpacing(10)
 
-        lbl_test_title = QLabel("Lab 1 Task Verification")
+        suite_row = QHBoxLayout()
+        lbl_test_title = QLabel("Lab Verification")
         lbl_test_title.setProperty("class", "CardHeader")
-        left_layout.addWidget(lbl_test_title)
+        suite_row.addWidget(lbl_test_title)
+        suite_row.addStretch()
 
-        btn_run_all = QPushButton("Run All Tests")
+        self.combo_test_suite = QComboBox()
+        self.combo_test_suite.addItems(["All Labs (Lab 1 & Lab 3)", "Lab 1", "Lab 3"])
+        suite_row.addWidget(self.combo_test_suite)
+        left_layout.addLayout(suite_row)
+
+        btn_run_all = QPushButton("Run Tests")
         btn_run_all.setObjectName("PrimaryButton")
         btn_run_all.clicked.connect(self._run_all_tests)
         left_layout.addWidget(btn_run_all)
@@ -936,7 +994,15 @@ class DSPMainWindow(QMainWindow):
         return container
 
     def _run_all_tests(self):
-        self.last_test_results = run_lab1_tests()
+        sel = self.combo_test_suite.currentText()
+        if "Lab 1" in sel and "All" not in sel:
+            suite = "lab1"
+        elif "Lab 3" in sel and "All" not in sel:
+            suite = "lab3"
+        else:
+            suite = "all"
+
+        self.last_test_results = run_all_lab_tests(suite)
         self.table_test_results.setRowCount(len(self.last_test_results))
 
         log_lines = []
@@ -999,7 +1065,20 @@ class DSPMainWindow(QMainWindow):
             if s2 and "Signal2" in data["name"]:
                 self.signals.append(s2.copy())
 
-            self.result_signal = res_sig.copy(new_name="Result") if res_sig else None
+            if res_sig and hasattr(res_sig, "quantization_data"):
+                alias_base = s1.alias if s1 else "X"
+                q_sig = res_sig.copy(
+                    new_name=f"{alias_base}_Quantized",
+                    new_alias=f"{alias_base}_Q"
+                )
+                self.signals.append(q_sig)
+                self.result_signal = None
+                self.active_signal_name = q_sig.name
+            else:
+                self.result_signal = res_sig.copy(new_name="Result") if res_sig else None
+                if self.signals:
+                    self.active_signal_name = self.signals[0].name
+
             self.current_operation_name = data["name"]
             self.procedural_steps = [data["message"]]
             self._rebuild_signals_ui()
@@ -1049,13 +1128,21 @@ class DSPMainWindow(QMainWindow):
 
         algo: DSPAlgorithm = data
 
-        if algo.category == "multi_signals":
+        if algo.category in ("conversion", "quantization"):
+            self.widget_quantization.setVisible(True)
+            self.widget_addition_signals.setVisible(False)
+            self.widget_two_signals.setVisible(False)
+            self._on_quant_mode_changed()
+        elif algo.category == "multi_signals":
+            self.widget_quantization.setVisible(False)
             self.widget_addition_signals.setVisible(True)
             self.widget_two_signals.setVisible(False)
         elif algo.category == "two_signals":
+            self.widget_quantization.setVisible(False)
             self.widget_addition_signals.setVisible(False)
             self.widget_two_signals.setVisible(True)
         else:
+            self.widget_quantization.setVisible(False)
             self.widget_addition_signals.setVisible(False)
             self.widget_two_signals.setVisible(False)
 
@@ -1119,6 +1206,39 @@ class DSPMainWindow(QMainWindow):
             elif isinstance(widget, QCheckBox):
                 vals[name] = widget.isChecked()
         return vals
+
+    def _on_quant_mode_changed(self):
+        use_bits = self.radio_quant_bits.isChecked()
+        self.spin_quant_bits.setEnabled(use_bits)
+        self.spin_quant_levels.setEnabled(not use_bits)
+        if use_bits:
+            self._on_quant_bits_changed(self.spin_quant_bits.value())
+        else:
+            self._on_quant_levels_changed(self.spin_quant_levels.value())
+
+    def _on_quant_bits_changed(self, val):
+        if self.radio_quant_bits.isChecked():
+            levels = 2 ** val
+            self.lbl_quant_derived.setText(f"Derived: {levels} levels")
+
+    def _on_quant_levels_changed(self, val):
+        if self.radio_quant_levels.isChecked():
+            bits = math.ceil(math.log2(val)) if val > 0 else 1
+            self.lbl_quant_derived.setText(f"Derived: {bits} bits")
+
+    def _on_add_error_sig_clicked(self):
+        active_sig = self._get_active_signal()
+        target = None
+        if active_sig and hasattr(active_sig, "error_signal") and active_sig.error_signal:
+            target = active_sig
+        elif self.result_signal and hasattr(self.result_signal, "error_signal") and self.result_signal.error_signal:
+            target = self.result_signal
+        if target:
+            err_sig = target.error_signal.copy()
+            self.signals.append(err_sig)
+            self.lbl_status_badge.setText(f"Added error signal '{err_sig.name}' to signals.")
+            self._rebuild_signals_ui()
+            self._update_views()
 
     def _rebuild_signals_ui(self):
         prev_states = {}
@@ -1283,6 +1403,13 @@ class DSPMainWindow(QMainWindow):
         has_result = (self.result_signal is not None)
         self.btn_save_result.setEnabled(has_result)
         self.btn_clear_result.setEnabled(has_result)
+        if hasattr(self, 'btn_add_error_sig'):
+            active_sig = self._get_active_signal()
+            has_error = (
+                (active_sig and hasattr(active_sig, "error_signal") and active_sig.error_signal is not None)
+                or (self.result_signal and hasattr(self.result_signal, "error_signal") and self.result_signal.error_signal is not None)
+            )
+            self.btn_add_error_sig.setEnabled(bool(has_error))
 
     def _update_details_table(self):
         target_sig = self._get_active_signal()
@@ -1296,22 +1423,70 @@ class DSPMainWindow(QMainWindow):
         if hasattr(self, 'lbl_details_title'):
             self.lbl_details_title.setText(f"Signal Details: {target_sig.name} ({target_sig.alias})")
 
-        headers = ["Index (n)", f"Value ({target_sig.alias})"]
-        self.table_details.setColumnCount(2)
-        self.table_details.setHorizontalHeaderLabels(headers)
-        self.table_details.setRowCount(target_sig.n_samples)
+        qdata = getattr(target_sig, "quantization_data", None)
+        if qdata:
+            headers = ["Index (n)", "x(n)", "Interval", "Encoded", "Quantized x̂(n)", "Error e(n)"]
+            self.table_details.setColumnCount(6)
+            self.table_details.setHorizontalHeaderLabels(headers)
+            self.table_details.setRowCount(target_sig.n_samples)
 
-        is_result = (self.result_signal is not None and target_sig == self.result_signal)
-        for row, (n, val) in enumerate(zip(target_sig.indices, target_sig.samples)):
-            item_idx = QTableWidgetItem(str(int(n)))
-            item_idx.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.table_details.setItem(row, 0, item_idx)
+            orig_samples = qdata.get("original_samples", target_sig.samples)
+            intervals = qdata.get("interval_indices", [])
+            encoded = qdata.get("encoded_values", [])
+            quantized = qdata.get("quantized_values", target_sig.samples)
+            errors = qdata.get("error_values", [])
 
-            item_val = QTableWidgetItem(f"{val:.2f}")
-            item_val.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            if is_result:
-                item_val.setForeground(QColor("#16a34a"))
-            self.table_details.setItem(row, 1, item_val)
+            for row, n in enumerate(target_sig.indices):
+                item_idx = QTableWidgetItem(str(int(n)))
+                item_idx.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.table_details.setItem(row, 0, item_idx)
+
+                x_val = orig_samples[row] if row < len(orig_samples) else 0.0
+                item_orig = QTableWidgetItem(f"{x_val:.3f}")
+                item_orig.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                self.table_details.setItem(row, 1, item_orig)
+
+                iv_val = intervals[row] if row < len(intervals) else ""
+                item_iv = QTableWidgetItem(str(iv_val))
+                item_iv.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.table_details.setItem(row, 2, item_iv)
+
+                code_val = encoded[row] if row < len(encoded) else ""
+                item_code = QTableWidgetItem(str(code_val))
+                item_code.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                font = item_code.font()
+                font.setFamily("Consolas, Courier New, monospace")
+                item_code.setFont(font)
+                self.table_details.setItem(row, 3, item_code)
+
+                q_val = quantized[row] if row < len(quantized) else 0.0
+                item_q = QTableWidgetItem(f"{q_val:.3f}")
+                item_q.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                item_q.setForeground(QColor("#16a34a"))
+                self.table_details.setItem(row, 4, item_q)
+
+                e_val = errors[row] if row < len(errors) else 0.0
+                item_err = QTableWidgetItem(f"{e_val:.3f}")
+                item_err.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                item_err.setForeground(QColor("#d97706"))
+                self.table_details.setItem(row, 5, item_err)
+        else:
+            headers = ["Index (n)", f"Value ({target_sig.alias})"]
+            self.table_details.setColumnCount(2)
+            self.table_details.setHorizontalHeaderLabels(headers)
+            self.table_details.setRowCount(target_sig.n_samples)
+
+            is_result = (self.result_signal is not None and target_sig == self.result_signal)
+            for row, (n, val) in enumerate(zip(target_sig.indices, target_sig.samples)):
+                item_idx = QTableWidgetItem(str(int(n)))
+                item_idx.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.table_details.setItem(row, 0, item_idx)
+
+                item_val = QTableWidgetItem(f"{val:.2f}")
+                item_val.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                if is_result:
+                    item_val.setForeground(QColor("#16a34a"))
+                self.table_details.setItem(row, 1, item_val)
 
     def _on_apply_operation_clicked(self):
         algo: DSPAlgorithm = self.combo_op.currentData()
@@ -1324,7 +1499,47 @@ class DSPMainWindow(QMainWindow):
             params = self._get_dynamic_param_values()
             sources: List[Signal] = []
 
-            if algo.category == "single_signal":
+            if algo.category in ("conversion", "quantization"):
+                target_sig = self._get_active_signal()
+                if not target_sig:
+                    QMessageBox.warning(self, "No Target Signal", "Please click a signal to select it.")
+                    return
+                mode = "bits" if self.radio_quant_bits.isChecked() else "levels"
+                num_bits = self.spin_quant_bits.value()
+                num_levels = self.spin_quant_levels.value()
+
+                alias_prefix = target_sig.alias or "X"
+                base_name = f"{alias_prefix}_Quantized"
+                existing = {s.name for s in self.signals}
+                sig_name = base_name
+                c = 2
+                while sig_name in existing:
+                    sig_name = f"{base_name} ({c})"
+                    c += 1
+
+                quantized_sig = algo.run_func(
+                    target_sig,
+                    mode=mode,
+                    num_bits=num_bits,
+                    num_levels=num_levels,
+                    new_name=sig_name,
+                    new_alias=f"{alias_prefix}_Q"
+                )
+                if target_sig.fs:
+                    quantized_sig.fs = target_sig.fs
+
+                self.signals.append(quantized_sig)
+                self.active_signal_name = quantized_sig.name
+                self.current_operation_name = f"Quantization on {target_sig.name}"
+                qdata = quantized_sig.quantization_data
+                self.lbl_status_badge.setText(
+                    f"Created '{quantized_sig.name}': L={qdata['num_levels']}, B={qdata['num_bits']} bits."
+                )
+                self._rebuild_signals_ui()
+                self._update_views()
+                return
+
+            elif algo.category == "single_signal":
                 target_sig = self._get_active_signal()
                 if not target_sig:
                     QMessageBox.warning(self, "No Target Signal", "Please click a signal to select it.")

@@ -2,9 +2,6 @@ import os
 
 
 def read_signal(file_path):
-    """Reads a signal file. Any line that is not exactly 'index value' is
-    treated as header (works with both the 1-line N header and the 3-line
-    lab header: type / periodic / N)."""
     indices = []
     samples = []
     with open(file_path, 'r') as f:
@@ -24,7 +21,6 @@ def ReadSignalFile(file_name):
 
 
 def find_file_ci(directory, filename):
-    """Case-insensitive file lookup (Signal1.txt vs signal1.txt on Linux/macOS)."""
     path = os.path.join(directory, filename)
     if os.path.exists(path):
         return path

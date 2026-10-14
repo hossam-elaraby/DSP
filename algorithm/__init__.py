@@ -4,6 +4,7 @@ from algorithm.subtraction import subtract_signals, ALGORITHM as SUBTRACTION_ALG
 from algorithm.multiplication import multiply_by_constant, ALGORITHM as MULTIPLICATION_ALGO
 from algorithm.shifting import delay_or_advance, ALGORITHM as SHIFTING_ALGO
 from algorithm.folding import fold_signal, ALGORITHM as FOLDING_ALGO
+from algorithm.quantization import quantize_signal, quantize_samples, ALGORITHM as QUANTIZATION_ALGO
 from algorithm.generation import generate_signal, continuous_curve 
 
 def get_registered_algorithms():
@@ -13,7 +14,7 @@ def get_registered_algorithms():
         FOLDING_ALGO,
         ADDITION_ALGO,
         SUBTRACTION_ALGO,
-
+        QUANTIZATION_ALGO,
     ]
 
 
@@ -25,6 +26,8 @@ __all__ = [
     "multiply_by_constant",
     "delay_or_advance",
     "fold_signal",
+    "quantize_signal",
+    "quantize_samples",
     "get_registered_algorithms",
     "generate_signal",
     "continuous_curve"
