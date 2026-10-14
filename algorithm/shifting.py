@@ -1,7 +1,27 @@
 from algorithm.base import DSPAlgorithm, AlgorithmParam
 
+
 def delay_or_advance(signal, k: int, new_name=None):
-    pass
+    """y[n] = x[n - k].
+    k > 0 -> delay   (every index moves right by k)
+    k < 0 -> advance (every index moves left by |k|)"""
+    from signal_model import Signal
+
+    k = int(k)
+    if k > 0:
+        kind = f"Delay {k}"
+    elif k < 0:
+        kind = f"Advance {abs(k)}"
+    else:
+        kind = "No Shift"
+
+    return Signal(
+        (signal.indices + k).tolist(),
+        signal.samples.tolist(),
+        name=new_name or f"Result ({kind})",
+        alias=f"{signal.alias}(n{-k:+d})"
+    )
+
 
 ALGORITHM = DSPAlgorithm(
     name="Delay / Advance [x(n -/+ k)]",

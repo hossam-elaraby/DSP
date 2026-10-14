@@ -1,7 +1,19 @@
 from algorithm.base import DSPAlgorithm, AlgorithmParam
 
+
 def multiply_by_constant(signal, constant: float, new_name=None):
-    pass
+    """y[n] = c * x[n]  (indices unchanged)."""
+    from signal_model import Signal
+
+    c = float(constant)
+    name = new_name or f"Result (x{c:g})"
+    return Signal(
+        signal.indices.tolist(),
+        (signal.samples * c).tolist(),
+        name=name,
+        alias=f"{c:g}*{signal.alias}"
+    )
+
 
 ALGORITHM = DSPAlgorithm(
     name="Multiplication (* Constant)",
