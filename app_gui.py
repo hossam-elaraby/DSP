@@ -1028,6 +1028,7 @@ class DSPMainWindow(QMainWindow):
 
         if self.last_test_results:
             self.table_test_results.selectRow(0)
+            self._on_test_row_selected()
 
     def _on_test_row_selected(self):
         selected = self.table_test_results.selectedItems()
